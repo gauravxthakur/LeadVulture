@@ -166,8 +166,29 @@ export function WatchlistTable({ stocks, onAddStock, onRemoveStock, soundEnabled
     }
   }
 
-  const handleGetCustomLeads = () => {
-    console.log("Getting custom leads")
+  const [isLoading, setIsLoading] = useState(false)
+
+  const handleGetCustomLeads = async () => {
+    try {
+      setIsLoading(true)
+      const response = await fetch('https://n8n-xzythodg.ap-southeast-1.clawcloudrun.com/webhook-test/d27ef1ce-4b63-4b45-8a2e-06b178b31e18', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+
+      const data = await response.json()
+      console.log('n8n workflow triggered successfully:', data)
+    } catch (error) {
+      console.error('Error triggering n8n workflow:', error)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -190,8 +211,13 @@ export function WatchlistTable({ stocks, onAddStock, onRemoveStock, soundEnabled
             </span>
           </Button>
         </label>
-        <Button onClick={handleGetCustomLeads} size="sm" className="h-9 gap-1.5" disabled={!isFileUploaded}>
-          Get Custom Leads
+        <Button 
+          onClick={handleGetCustomLeads} 
+          size="sm" 
+          className="h-9 gap-1.5" 
+          disabled={!isFileUploaded || isLoading}
+        >
+          {isLoading ? 'Triggering...' : 'Get Custom Leads'}
         </Button>
       </div>
 
