@@ -34,6 +34,7 @@ export function WatchlistTable({ stocks, onAddStock, onRemoveStock, soundEnabled
   const [sorting, setSorting] = useState<SortingState>([])
   const [globalFilter, setGlobalFilter] = useState("")
   const [newSymbol, setNewSymbol] = useState("")
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null)
   const [isFileUploaded, setIsFileUploaded] = useState(false)
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null)
 
@@ -161,31 +162,94 @@ export function WatchlistTable({ stocks, onAddStock, onRemoveStock, soundEnabled
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0]
+      setUploadedFile(file)
       setIsFileUploaded(true)
-      setUploadedFileName(e.target.files[0].name)
+      setUploadedFileName(file.name)
     }
   }
 
   const [isLoading, setIsLoading] = useState(false)
 
   const handleGetCustomLeads = async () => {
+    if (!uploadedFile) {
+      console.error('No file uploaded')
+      return
+    }
+
     try {
       setIsLoading(true)
-      const response = await fetch('https://n8n-xzythodg.ap-southeast-1.clawcloudrun.com/webhook-test/d27ef1ce-4b63-4b45-8a2e-06b178b31e18', {
-        method: 'GET',
+      
+      // Read and parse the JSON file
+      const fileContent = await uploadedFile.text()
+      let parsedData
+      
+      try {
+        parsedData = JSON.parse(fileContent)
+      } catch (parseError) {
+        throw new Error('Failed to parse JSON file. Please ensure it contains valid JSON.')
+      }
+
+      // Validate that parsed data is an array
+      if (!Array.isArray(parsedData)) {
+        throw new Error('JSON file must contain an array of data.')
+      }
+
+      // Prepare request data
+      const requestData = { data: parsedData }
+
+      console.log('Sending request to server-side API:', {
+        endpoint: '/api/webhook',
+        method: 'POST',
+        bodySize: JSON.stringify(requestData).length,
+        dataType: Array.isArray(parsedData) ? 'array' : typeof parsedData,
+        sampleData: parsedData.slice(0, 2) // Show first 2 items
+      })
+
+      // Use server-side API route to avoid CORS issues
+      const response = await fetch('/api/webhook', {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify(requestData),
       })
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
+        const errorText = await response.text()
+        throw new Error(`API error! status: ${response.status}, message: ${errorText}`)
       }
 
-      const data = await response.json()
-      console.log('n8n workflow triggered successfully:', data)
+      const result = await response.json()
+      console.log('Request successful:', result)
+      
+      // Optionally reset file upload after successful submission
+      setUploadedFile(null)
+      setIsFileUploaded(false)
+      setUploadedFileName(null)
+      
     } catch (error) {
-      console.error('Error triggering n8n workflow:', error)
+      console.error('Error processing file or triggering n8n workflow:', error)
+      
+      // More specific error handling
+      if (error instanceof TypeError && error.message === 'Failed to fetch') {
+        console.error('Network error - possible causes:')
+        console.error('1. CORS issue - n8n server needs to allow your domain')
+        console.error('2. Network connectivity - check internet connection')
+        console.error('3. n8n server down - verify webhook URL is accessible')
+        console.error('4. HTTPS/HTTP mismatch - check protocol requirements')
+        
+        // Try a simple connectivity test
+        try {
+          console.log('Testing basic connectivity...')
+          const testResponse = await fetch('https://httpbin.org/get')
+          console.log('Basic connectivity test passed:', testResponse.status)
+        } catch (testError) {
+          console.error('Basic connectivity test failed - likely network/CORS issue')
+        }
+      }
+      
+      // You could add user-facing error notification here
     } finally {
       setIsLoading(false)
     }
@@ -215,9 +279,9 @@ export function WatchlistTable({ stocks, onAddStock, onRemoveStock, soundEnabled
           onClick={handleGetCustomLeads} 
           size="sm" 
           className="h-9 gap-1.5" 
-          disabled={!isFileUploaded || isLoading}
+          disabled={!uploadedFile || isLoading}
         >
-          {isLoading ? 'Triggering...' : 'Get Custom Leads'}
+          {isLoading ? 'Processing...' : 'Get Custom Leads'}
         </Button>
       </div>
 
